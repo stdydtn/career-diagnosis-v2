@@ -36,6 +36,12 @@ function toJsonb(value) {
   }
 }
 
+/** PostgREST가 스키마에 없는 컬럼을 거절할 때(마이그레이션 전) 메시지에 컬럼명이 드러남 */
+function shouldRetryInsertWithoutAiColumns(error) {
+  const m = String(error?.message ?? '').toLowerCase()
+  return m.includes('ai_report') || m.includes('ai_cover_letter_review')
+}
+
 /**
  * @param {{
  *   profile: object,
@@ -91,6 +97,8 @@ export async function saveDiagnosisSubmission({
       hasCoverLetterReview: coverLetterReview != null,
       hasReviewBlock,
       coverLetterVersion: coverLetterReview?.version ?? null,
+      hasAiReport: aiReport != null,
+      hasAiCoverLetterReview: aiCoverLetterReview != null,
       sessionQuestionCount: Array.isArray(sessionQuestions)
         ? sessionQuestions.length
         : 0,
@@ -100,7 +108,18 @@ export async function saveDiagnosisSubmission({
 
   // insert 후 .select()를 붙이면 return=representation이 되어, RLS에 SELECT 정책이 없으면
   // anon 클라이언트에서 실패할 수 있습니다. MVP는 insert만 수행합니다.
-  const { error } = await supabase.from('diagnosis_submissions').insert([row])
+  let { error } = await supabase.from('diagnosis_submissions').insert([row])
+
+  if (error && shouldRetryInsertWithoutAiColumns(error)) {
+    console.warn(
+      '[saveDiagnosisSubmission] ai_report / ai_cover_letter_review 컬럼이 없어 AI 필드 없이 재시도합니다. Supabase SQL Editor에서 src/lib/supabaseSchema.sql의 ALTER 구문을 실행하면 AI 결과까지 저장됩니다.',
+      error.message,
+    )
+    const { ai_report: _a, ai_cover_letter_review: _c, ...rowLegacy } = row
+    void _a
+    void _c
+    ;({ error } = await supabase.from('diagnosis_submissions').insert([rowLegacy]))
+  }
 
   if (error) {
     console.error('[saveDiagnosisSubmission]', error)
