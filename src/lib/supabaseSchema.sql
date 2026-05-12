@@ -46,3 +46,9 @@ with check (privacy_consent = true);
 -- for select
 -- to anon
 -- using (true);
+
+-- 기존 테이블에 AI 결과 컬럼 추가 (이미 적용했다면 생략)
+
+alter table public.diagnosis_submissions
+add column if not exists ai_report jsonb,
+add column if not exists ai_cover_letter_review jsonb;

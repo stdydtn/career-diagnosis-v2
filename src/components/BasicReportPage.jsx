@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { buildBasicReport, runReportBuilderTests } from '../lib/reportBuilder.js'
 import { downloadBasicReportPdf } from '../lib/pdf.js'
+import { callCareerAI } from '../lib/ai.js'
 
 if (import.meta.env.DEV) {
   runReportBuilderTests()
@@ -25,11 +26,104 @@ function SectionCard({ section }) {
   )
 }
 
+const AI_SECTION_KEYS = [
+  'interest',
+  'values',
+  'workStyle',
+  'competency',
+  'maturity',
+  'readiness',
+  'barriers',
+]
+
+function AiReportSection({ data }) {
+  const sections = data?.sections && typeof data.sections === 'object' ? data.sections : {}
+  const jobs = Array.isArray(data?.recommendedJobs) ? data.recommendedJobs : []
+  const plan = Array.isArray(data?.actionPlan) ? data.actionPlan : []
+
+  return (
+    <section className="rounded-3xl border-2 border-violet-200 bg-violet-50/40 p-6 shadow-sm sm:p-8">
+      <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+        AI Report
+      </p>
+      <h3 className="mt-2 text-xl font-semibold text-slate-900">
+        {data?.title || 'AI 커리어 상세 리포트'}
+      </h3>
+      <div className="mt-4 rounded-2xl border border-violet-100 bg-white p-4">
+        <p className="text-sm leading-6 text-slate-800">{data?.summary}</p>
+      </div>
+
+      <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {AI_SECTION_KEYS.map((key) => {
+          const s = sections[key]
+          if (!s?.title) return null
+          return (
+            <div
+              key={key}
+              className="rounded-3xl border border-violet-100 bg-white p-5 shadow-sm"
+            >
+              <h4 className="text-sm font-semibold text-slate-900">{s.title}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-700">{s.description}</p>
+              {Array.isArray(s.highlights) && s.highlights.length > 0 ? (
+                <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-slate-700">
+                  {s.highlights.map((h) => (
+                    <li key={h}>{h}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="mt-8">
+        <h4 className="text-base font-semibold text-slate-900">추천 직무 (AI)</h4>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          {jobs.slice(0, 5).map((job, index) => {
+            const name = typeof job === 'string' ? job : job?.name ?? '-'
+            const reason =
+              typeof job === 'object' && job?.reason
+                ? job.reason
+                : '진단 결과를 바탕으로 추천된 직무입니다.'
+            return (
+              <article
+                key={`${name}-${index}`}
+                className="rounded-2xl border border-violet-100 bg-white p-4"
+              >
+                <p className="text-xs font-semibold text-violet-600">{index + 1}순위</p>
+                <p className="mt-1 text-base font-semibold text-slate-900">{name}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{reason}</p>
+              </article>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <h4 className="text-base font-semibold text-slate-900">다음 실행전략 (AI)</h4>
+        <ol className="mt-3 space-y-2">
+          {plan.map((item, idx) => (
+            <li
+              key={`${idx}-${item}`}
+              className="rounded-2xl border border-violet-100 bg-white px-4 py-3 text-sm text-slate-700"
+            >
+              <span className="mr-2 font-semibold text-slate-900">{idx + 1}.</span>
+              {item}
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  )
+}
+
 /**
  * @param {{
  *   profile?: object,
  *   diagnosisResult: object | null,
  *   basicReport?: object | null,
+ *   aiReport?: object | null,
+ *   setAiReport?: (v: object | null) => void,
  *   switchTab: (id: string) => void,
  *   feedbackSubmitted: boolean,
  * }} props
@@ -38,10 +132,13 @@ export function BasicReportPage({
   profile,
   diagnosisResult,
   basicReport: basicReportProp,
+  aiReport,
+  setAiReport,
   switchTab,
   feedbackSubmitted,
 }) {
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [aiLoading, setAiLoading] = useState(false)
 
   const report = useMemo(() => {
     if (!diagnosisResult) return null
@@ -73,6 +170,29 @@ export function BasicReportPage({
       )
     } finally {
       setPdfLoading(false)
+    }
+  }
+
+  const handleAiReport = async () => {
+    if (!diagnosisResult || !report) return
+    setAiLoading(true)
+    try {
+      const res = await callCareerAI({
+        mode: 'report',
+        profile,
+        diagnosisResult,
+        basicReport: report,
+      })
+      if (!res?.data) {
+        window.alert('AI 리포트 생성 중 오류가 발생했습니다.')
+        return
+      }
+      setAiReport?.(res.data)
+    } catch (e) {
+      console.error(e)
+      window.alert('AI 리포트 생성 중 오류가 발생했습니다.')
+    } finally {
+      setAiLoading(false)
     }
   }
 
@@ -110,7 +230,7 @@ export function BasicReportPage({
                   <p className="text-sm leading-6 text-slate-100">{report.summary}</p>
                 </div>
               </div>
-              <div className="shrink-0 lg:pt-8">
+              <div className="flex shrink-0 flex-col gap-2 lg:pt-8">
                 <button
                   type="button"
                   disabled={pdfLoading}
@@ -118,6 +238,14 @@ export function BasicReportPage({
                   className="w-full rounded-2xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-60 lg:w-auto"
                 >
                   {pdfLoading ? 'PDF 생성 중...' : 'PDF 파일로 저장하기'}
+                </button>
+                <button
+                  type="button"
+                  disabled={aiLoading}
+                  onClick={handleAiReport}
+                  className="w-full rounded-2xl border border-violet-300/50 bg-violet-500/20 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500/30 disabled:cursor-not-allowed disabled:opacity-60 lg:w-auto"
+                >
+                  {aiLoading ? 'AI 리포트 생성 중...' : 'AI 리포트 생성하기'}
                 </button>
               </div>
             </div>
@@ -171,6 +299,8 @@ export function BasicReportPage({
               ))}
             </ol>
           </section>
+
+          {aiReport ? <AiReportSection data={aiReport} /> : null}
 
           <section className="rounded-3xl border border-slate-200 bg-slate-50 p-6 sm:p-8">
             <h3 className="text-lg font-semibold text-slate-900">MVP 후기조사</h3>

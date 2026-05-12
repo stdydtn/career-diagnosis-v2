@@ -68,6 +68,8 @@ function App() {
   )
   const [feedback, setFeedback] = useState(emptyFeedback)
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false)
+  const [aiReport, setAiReport] = useState(null)
+  const [aiCoverLetterReview, setAiCoverLetterReview] = useState(null)
 
   useEffect(() => {
     try {
@@ -125,12 +127,16 @@ function App() {
             diagnosisResult={diagnosisResult}
             coverLetterReview={coverLetterReview}
             setCoverLetterReview={setCoverLetterReview}
+            aiCoverLetterReview={aiCoverLetterReview}
+            setAiCoverLetterReview={setAiCoverLetterReview}
           />
         )}
         {activeTab === TABS.basicReport && (
           <BasicReportPage
             profile={profile}
             diagnosisResult={diagnosisResult}
+            aiReport={aiReport}
+            setAiReport={setAiReport}
             switchTab={switchTab}
             feedbackSubmitted={feedbackSubmitted}
           />
@@ -142,6 +148,8 @@ function App() {
             answers={answers}
             diagnosisResult={diagnosisResult}
             coverLetterReview={coverLetterReview}
+            aiReport={aiReport}
+            aiCoverLetterReview={aiCoverLetterReview}
             feedback={feedback}
             setFeedback={setFeedback}
             onSubmitted={() => setFeedbackSubmitted(true)}

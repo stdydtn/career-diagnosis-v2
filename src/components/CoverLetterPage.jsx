@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { reviewCoverLetter } from '../lib/coverLetterReview.js'
+import { callCareerAI } from '../lib/ai.js'
 import { ScoreBar } from './ScoreBar.jsx'
 
 const initialItems = [1, 2, 3, 4].map((id) => ({
@@ -14,6 +15,8 @@ const initialItems = [1, 2, 3, 4].map((id) => ({
  *   diagnosisResult?: object | null,
  *   coverLetterReview?: object | null,
  *   setCoverLetterReview?: (v: object | null) => void,
+ *   aiCoverLetterReview?: object | null,
+ *   setAiCoverLetterReview?: (v: object | null) => void,
  * }} props
  */
 export function CoverLetterPage({
@@ -21,7 +24,11 @@ export function CoverLetterPage({
   diagnosisResult,
   coverLetterReview,
   setCoverLetterReview,
+  aiCoverLetterReview,
+  setAiCoverLetterReview,
 }) {
+  const [aiLoading, setAiLoading] = useState(false)
+
   const [coverLetter, setCoverLetter] = useState({
     company: '',
     job: profile?.targetJob || '',
@@ -89,6 +96,42 @@ export function CoverLetterPage({
       review: result,
     }
     setCoverLetterReview?.(forAppAndDb)
+  }
+
+  const handleAiCoverLetter = async () => {
+    const hasAnswer = coverLetter.items.some((it) => it.answer.trim())
+    if (!hasAnswer) {
+      window.alert(
+        '답변이 입력된 문항이 없습니다. AI 첨삭을 받으려면 최소 한 개 문항에 답변을 입력해주세요.',
+      )
+      return
+    }
+    const letterForReview = {
+      ...coverLetter,
+      job:
+        coverLetter.job.trim() ||
+        (typeof profile?.targetJob === 'string' ? profile.targetJob.trim() : '') ||
+        '',
+    }
+    setAiLoading(true)
+    try {
+      const res = await callCareerAI({
+        mode: 'coverLetter',
+        profile,
+        diagnosisResult: diagnosisResult ?? null,
+        coverLetter: letterForReview,
+      })
+      if (!res?.data) {
+        window.alert('AI 자기소개서 첨삭 중 오류가 발생했습니다.')
+        return
+      }
+      setAiCoverLetterReview?.(res.data)
+    } catch (e) {
+      console.error(e)
+      window.alert('AI 자기소개서 첨삭 중 오류가 발생했습니다.')
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   return (
@@ -197,13 +240,21 @@ export function CoverLetterPage({
             ))}
           </div>
 
-          <div className="mt-8 flex justify-end">
+          <div className="mt-8 flex flex-wrap justify-end gap-3">
             <button
               type="button"
               onClick={handleReview}
               className="rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
             >
               자기소개서 첨삭하기
+            </button>
+            <button
+              type="button"
+              disabled={aiLoading}
+              onClick={handleAiCoverLetter}
+              className="rounded-2xl border border-indigo-300 bg-indigo-50 px-5 py-2.5 text-sm font-semibold text-indigo-900 shadow-sm transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {aiLoading ? 'AI 첨삭 생성 중...' : 'AI 자기소개서 첨삭하기'}
             </button>
           </div>
         </section>
@@ -334,6 +385,132 @@ export function CoverLetterPage({
                   <p className="text-sm font-semibold text-slate-800">
                     문장 수정 예시
                   </p>
+                  <p className="mt-2 text-sm leading-7 text-slate-700">
+                    {item.sampleRevision}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </section>
+        ) : null}
+
+        {aiCoverLetterReview &&
+        Array.isArray(aiCoverLetterReview.items) &&
+        aiCoverLetterReview.items.length > 0 ? (
+          <section className="space-y-6">
+            <div className="rounded-3xl border-2 border-indigo-200 bg-indigo-50/50 p-4 sm:p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                AI 첨삭
+              </p>
+              <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                AI 자기소개서 첨삭 결과
+              </h3>
+            </div>
+
+            <div className="rounded-3xl bg-indigo-950 p-6 text-white shadow-sm sm:p-8">
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">
+                AI 총평
+              </p>
+              <p className="mt-3 text-sm leading-6 text-indigo-50">
+                {aiCoverLetterReview.overallComment}
+              </p>
+              <p className="mt-4 text-sm font-medium text-white">
+                평균 점수:{' '}
+                <span className="tabular-nums text-lg">
+                  {aiCoverLetterReview.averageScore}
+                </span>
+                <span className="text-indigo-200"> / 100</span>
+              </p>
+            </div>
+
+            {aiCoverLetterReview.items.map((item) => (
+              <article
+                key={`ai-${item.id}`}
+                className="rounded-3xl border-2 border-indigo-100 bg-white p-6 shadow-sm sm:p-8"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h4 className="text-lg font-semibold text-slate-900">
+                    문항 {item.id} (AI)
+                  </h4>
+                  <p className="text-sm text-slate-600">
+                    종합{' '}
+                    <span className="font-semibold text-slate-900">{item.score}점</span>
+                  </p>
+                </div>
+                {item.question ? (
+                  <p className="mt-2 text-sm text-slate-600">{item.question}</p>
+                ) : null}
+
+                <div className="mt-6 space-y-4">
+                  <p className="text-sm font-semibold text-slate-800">세부 점수 (AI)</p>
+                  <ScoreBar
+                    label="문항적합도"
+                    value={item.scores?.questionFit ?? 0}
+                    valueScale="hundred"
+                  />
+                  <ScoreBar
+                    label="직무연결성"
+                    value={item.scores?.jobFit ?? 0}
+                    valueScale="hundred"
+                  />
+                  <ScoreBar
+                    label="경험구체성"
+                    value={item.scores?.specificity ?? 0}
+                    valueScale="hundred"
+                  />
+                  <ScoreBar
+                    label="성과근거"
+                    value={item.scores?.evidence ?? 0}
+                    valueScale="hundred"
+                  />
+                  <ScoreBar
+                    label="회사맞춤도"
+                    value={item.scores?.companyFit ?? 0}
+                    valueScale="hundred"
+                  />
+                </div>
+
+                <div className="mt-8 grid gap-6 md:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">좋은 점</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                      {(item.strengths ?? []).map((s) => (
+                        <li key={s}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">보완할 점</p>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                      {(item.improvements ?? []).map((s) => (
+                        <li key={s}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="mt-8">
+                  <p className="text-sm font-semibold text-slate-800">
+                    진단 결과 기반 조언 (AI)
+                  </p>
+                  <ul className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-slate-700">
+                    {(item.diagnosisAdvice ?? []).map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="mt-8">
+                  <p className="text-sm font-semibold text-slate-800">추천 수정 구조 (AI)</p>
+                  <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-700">
+                    {(item.recommendedStructure ?? []).map((line, idx) => (
+                      <li key={idx}>{line}</li>
+                    ))}
+                  </ol>
+                </div>
+
+                <div className="mt-8 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+                  <p className="text-sm font-semibold text-slate-800">문장 수정 예시 (AI)</p>
                   <p className="mt-2 text-sm leading-7 text-slate-700">
                     {item.sampleRevision}
                   </p>

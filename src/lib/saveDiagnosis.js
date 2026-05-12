@@ -44,6 +44,8 @@ function toJsonb(value) {
  *   diagnosisResult: object | null,
  *   feedback: object,
  *   coverLetterReview: object | null,
+ *   aiReport?: object | null,
+ *   aiCoverLetterReview?: object | null,
  * }} input
  * @returns {Promise<{ success: true, id: string | null } | { success: true, skipped: true, message: string }>}
  */
@@ -54,6 +56,8 @@ export async function saveDiagnosisSubmission({
   diagnosisResult,
   feedback,
   coverLetterReview,
+  aiReport,
+  aiCoverLetterReview,
 }) {
   if (!isSupabaseConfigured || !supabase) {
     console.warn(
@@ -74,6 +78,8 @@ export async function saveDiagnosisSubmission({
     diagnosis_result: toJsonb(diagnosisResult),
     feedback: toJsonb(feedback ?? {}),
     cover_letter_review: toJsonb(coverLetterReview),
+    ai_report: toJsonb(aiReport),
+    ai_cover_letter_review: toJsonb(aiCoverLetterReview),
   }
 
   if (import.meta.env.DEV) {

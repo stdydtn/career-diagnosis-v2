@@ -81,6 +81,8 @@ function RadioGroup({ label, required, name, value, options, onChange }) {
  *   answers: object,
  *   diagnosisResult: object | null,
  *   coverLetterReview: object | null,
+ *   aiReport?: object | null,
+ *   aiCoverLetterReview?: object | null,
  *   feedback: object,
  *   setFeedback: (fn: object | ((prev: object) => object)) => void,
  *   onSubmitted?: () => void,
@@ -93,6 +95,8 @@ export function FeedbackSurveyPage({
   answers,
   diagnosisResult,
   coverLetterReview,
+  aiReport,
+  aiCoverLetterReview,
   feedback,
   setFeedback,
   onSubmitted,
@@ -145,6 +149,8 @@ export function FeedbackSurveyPage({
         diagnosisResult,
         feedback,
         coverLetterReview,
+        aiReport,
+        aiCoverLetterReview,
       })
 
       if (result.skipped) {
