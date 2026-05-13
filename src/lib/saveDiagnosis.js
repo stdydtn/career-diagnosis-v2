@@ -1,4 +1,7 @@
+import { TOTAL_QUESTION_COUNT } from '../constants/quotas.js'
+import { loadSessionQuestionsFromStorage } from './diagnosisLocalSession.js'
 import { isSupabaseConfigured, supabase } from './supabase.js'
+import { buildDiagnosisResult } from './scoring.js'
 
 /**
  * @param {object} profile
@@ -43,6 +46,32 @@ function shouldRetryInsertWithoutAiColumns(error) {
 }
 
 /**
+ * @param {unknown[]} sessionQs
+ * @param {object} answers
+ * @param {object | null} diagnosisResult
+ * @param {object} profile
+ */
+function resolveDiagnosisForSave(sessionQs, answers, diagnosisResult, profile) {
+  const looksComplete =
+    diagnosisResult?.scores &&
+    diagnosisResult?.top &&
+    typeof diagnosisResult?.stage?.label === 'string' &&
+    diagnosisResult.stage.label.trim() !== '' &&
+    Array.isArray(diagnosisResult?.recommendedJobs)
+
+  if (looksComplete) return diagnosisResult
+  if (!Array.isArray(sessionQs) || sessionQs.length === 0) return diagnosisResult ?? null
+  if (!answers || typeof answers !== 'object') return diagnosisResult ?? null
+  const allAnswered = sessionQs.every((q) => typeof answers[q.id] === 'number')
+  if (!allAnswered) return diagnosisResult ?? null
+  try {
+    return buildDiagnosisResult({ answers, sessionQuestions: sessionQs, profile })
+  } catch {
+    return diagnosisResult ?? null
+  }
+}
+
+/**
  * @param {{
  *   profile: object,
  *   sessionQuestions: unknown[],
@@ -77,48 +106,122 @@ export async function saveDiagnosisSubmission({
     }
   }
 
+  const sessionQs =
+    Array.isArray(sessionQuestions) && sessionQuestions.length > 0
+      ? sessionQuestions
+      : loadSessionQuestionsFromStorage() ?? []
+
+  const diagnosisPayload = resolveDiagnosisForSave(
+    sessionQs,
+    answers,
+    diagnosisResult,
+    profile,
+  )
+
+  const completedAt = new Date().toISOString()
+  const sqLen = sessionQs.length
+  const ansLen = Object.keys(answers || {}).length
+  const totalAnswerCount =
+    sqLen === TOTAL_QUESTION_COUNT || ansLen === TOTAL_QUESTION_COUNT
+      ? TOTAL_QUESTION_COUNT
+      : Math.max(sqLen, ansLen, 0)
+
+  const recommendedJobs = diagnosisPayload?.recommendedJobs ?? []
+  const topInterest = diagnosisPayload?.top?.interest ?? []
+  const topValues = diagnosisPayload?.top?.values ?? []
+  const topWorkStyle = diagnosisPayload?.top?.workStyle ?? []
+  const topCompetency = diagnosisPayload?.top?.competency ?? []
+  const stageLabel = diagnosisPayload?.stage?.label ?? null
+  const paidIntent =
+    feedback?.paidIntent ??
+    (typeof feedback?.paid_intent === 'string' ? feedback.paid_intent : null)
+
+  /** 저장·로그용 — DB 컬럼명과 동일한 키로 분석·검증이 쉽도록 정리 */
+  const payload = {
+    profile,
+    session_questions: sessionQs,
+    answers,
+    diagnosis_result: diagnosisPayload,
+    feedback,
+    cover_letter_review: coverLetterReview,
+    ai_report: aiReport,
+    ai_cover_letter_review: aiCoverLetterReview,
+    completed_at: completedAt,
+    total_answer_count: totalAnswerCount,
+    recommended_jobs: recommendedJobs,
+    top_interest: topInterest,
+    top_values: topValues,
+    top_work_style: topWorkStyle,
+    top_competency: topCompetency,
+    stage_label: stageLabel,
+    paid_intent: paidIntent,
+  }
+
   const row = {
     ...profileToRow(profile),
-    session_questions: toJsonb(sessionQuestions ?? []),
+    session_questions: toJsonb(sessionQs),
     answers: toJsonb(answers ?? {}),
-    diagnosis_result: toJsonb(diagnosisResult),
+    diagnosis_result: toJsonb(diagnosisPayload),
     feedback: toJsonb(feedback ?? {}),
     cover_letter_review: toJsonb(coverLetterReview),
     ai_report: toJsonb(aiReport),
     ai_cover_letter_review: toJsonb(aiCoverLetterReview),
+    completed_at: completedAt,
+    total_answer_count: totalAnswerCount,
+    recommended_jobs: toJsonb(recommendedJobs),
+    top_interest: toJsonb(topInterest),
+    top_values: toJsonb(topValues),
+    top_work_style: toJsonb(topWorkStyle),
+    top_competency: toJsonb(topCompetency),
+    stage_label: stageLabel,
+    paid_intent: typeof paidIntent === 'string' ? paidIntent : paidIntent == null ? null : String(paidIntent),
   }
 
   if (import.meta.env.DEV) {
+    console.log('Supabase 저장 payload:', payload)
     const hasReviewBlock = Boolean(
       coverLetterReview?.review ||
         (coverLetterReview && Array.isArray(coverLetterReview.items)),
     )
     console.debug('[saveDiagnosisSubmission] inserting', {
+      usedStoredSession: !(Array.isArray(sessionQuestions) && sessionQuestions.length > 0),
+      recomputedDiagnosis: diagnosisPayload !== diagnosisResult,
       hasCoverLetterReview: coverLetterReview != null,
       hasReviewBlock,
       coverLetterVersion: coverLetterReview?.version ?? null,
       hasAiReport: aiReport != null,
       hasAiCoverLetterReview: aiCoverLetterReview != null,
-      sessionQuestionCount: Array.isArray(sessionQuestions)
-        ? sessionQuestions.length
-        : 0,
-      answerKeys: answers && typeof answers === 'object' ? Object.keys(answers).length : 0,
+      sessionQuestionCount: sessionQs.length,
+      answerKeys: ansLen,
+      totalAnswerCount,
+      hasStageLabel: Boolean(stageLabel),
+      hasPaidIntent: Boolean(paidIntent),
     })
   }
 
   // insert 후 .select()를 붙이면 return=representation이 되어, RLS에 SELECT 정책이 없으면
   // anon 클라이언트에서 실패할 수 있습니다. MVP는 insert만 수행합니다.
-  let { error } = await supabase.from('diagnosis_submissions').insert([row])
+  /** @type {Record<string, unknown>} */
+  let insertRow = { ...row }
+  let { error } = await supabase.from('diagnosis_submissions').insert([insertRow])
 
-  if (error && shouldRetryInsertWithoutAiColumns(error)) {
+  let guard = 0
+  while (error && guard < 8) {
+    guard += 1
+    const stripAi =
+      shouldRetryInsertWithoutAiColumns(error) &&
+      ('ai_report' in insertRow || 'ai_cover_letter_review' in insertRow)
+    if (!stripAi) break
+
     console.warn(
       '[saveDiagnosisSubmission] ai_report / ai_cover_letter_review 컬럼이 없어 AI 필드 없이 재시도합니다. Supabase SQL Editor에서 src/lib/supabaseSchema.sql의 ALTER 구문을 실행하면 AI 결과까지 저장됩니다.',
       error.message,
     )
-    const { ai_report: _a, ai_cover_letter_review: _c, ...rowLegacy } = row
+    const { ai_report: _a, ai_cover_letter_review: _c, ...rest } = insertRow
     void _a
     void _c
-    ;({ error } = await supabase.from('diagnosis_submissions').insert([rowLegacy]))
+    insertRow = rest
+    ;({ error } = await supabase.from('diagnosis_submissions').insert([insertRow]))
   }
 
   if (error) {

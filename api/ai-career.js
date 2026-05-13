@@ -26,7 +26,8 @@ function extractJsonCandidate(text) {
 }
 
 function jsonResponse(res, status, body) {
-  res.status(status).setHeader('Content-Type', 'application/json; charset=utf-8')
+  res.statusCode = status
+  res.setHeader('Content-Type', 'application/json; charset=utf-8')
   res.end(JSON.stringify(body))
 }
 

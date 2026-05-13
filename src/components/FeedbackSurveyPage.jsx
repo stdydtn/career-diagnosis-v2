@@ -87,6 +87,7 @@ function RadioGroup({ label, required, name, value, options, onChange }) {
  *   setFeedback: (fn: object | ((prev: object) => object)) => void,
  *   onSubmitted?: () => void,
  *   switchTab: (id: string) => void,
+ *   feedbackSubmitted?: boolean,
  * }} props
  */
 export function FeedbackSurveyPage({
@@ -101,6 +102,7 @@ export function FeedbackSurveyPage({
   setFeedback,
   onSubmitted,
   switchTab,
+  feedbackSubmitted = false,
 }) {
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -131,6 +133,7 @@ export function FeedbackSurveyPage({
   }
 
   const handleSubmit = async () => {
+    if (feedbackSubmitted) return
     if (!validate()) return
     if (isSupabaseConfigured && !profile?.privacyConsent) {
       window.alert(
@@ -167,7 +170,7 @@ export function FeedbackSurveyPage({
     } catch (e) {
       console.error(e)
       setSubmitError(
-        '데이터 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.',
+        '후기 제출 중 오류가 발생했습니다. 새로고침하지 말고 잠시 후 다시 시도해주세요.',
       )
     } finally {
       setLoading(false)
@@ -182,8 +185,28 @@ export function FeedbackSurveyPage({
         </h2>
         <p className="mt-3 text-sm leading-6 text-slate-700">
           {skippedSave
-            ? '개발 환경에서는 저장을 건너뛰었습니다.'
-            : '후기가 제출되었습니다. 감사합니다.'}
+            ? '현재 개발 환경에서는 저장이 건너뛰어졌습니다. 배포 환경에서는 Supabase 설정을 확인해주세요.'
+            : '후기와 진단 결과가 저장되었습니다. 테스트 참여에 감사드립니다.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => switchTab('basicReport')}
+          className="mt-6 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+        >
+          베이직 리포트로 이동
+        </button>
+      </section>
+    )
+  }
+
+  if (feedbackSubmitted) {
+    return (
+      <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 sm:p-8">
+        <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+          MVP 후기조사
+        </h2>
+        <p className="mt-3 text-sm leading-6 text-slate-700">
+          후기조사가 제출되었습니다.
         </p>
         <button
           type="button"
@@ -208,8 +231,9 @@ export function FeedbackSurveyPage({
               MVP 후기조사
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              서비스 개선을 위해 몇 가지 질문에 답해주세요. 제출 시 입력하신
-              진단·프로필 정보가 함께 저장됩니다.
+              후기조사는 서비스 개선과 정식 출시 가능성 검토를 위해 활용됩니다. 사용
+              중 불편했던 점, 도움이 되었던 점, 유료화 시 사용 의향을 솔직하게
+              남겨주세요.
             </p>
           </div>
           <button
@@ -318,7 +342,7 @@ export function FeedbackSurveyPage({
             type="button"
             disabled={loading}
             onClick={handleSubmit}
-            className="rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {loading ? '저장 중...' : '후기 제출하기'}
           </button>

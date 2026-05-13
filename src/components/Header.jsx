@@ -9,6 +9,9 @@ export function Header({ tabs, activeTab, onChangeTab }) {
           <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
             {SERVICE_NAME}
           </h1>
+          <p className="text-sm leading-6 text-slate-600">
+            직업상담 기반 7개 영역 진단 · AI 리포트 · 자기소개서 첨삭
+          </p>
         </div>
 
         <nav className="flex flex-wrap gap-2">
@@ -32,6 +35,10 @@ export function Header({ tabs, activeTab, onChangeTab }) {
             )
           })}
         </nav>
+
+        <p className="text-xs leading-5 text-slate-500">
+          본 서비스는 MVP 테스트 버전이며, 진단 및 AI 결과는 참고용입니다.
+        </p>
       </div>
     </header>
   )

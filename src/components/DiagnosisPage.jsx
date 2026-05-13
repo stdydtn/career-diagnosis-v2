@@ -14,6 +14,7 @@ import {
   generateExamQuestions,
   runQuestionSelectorTests,
 } from '../lib/questionSelector.js'
+import { SESSION_QUESTIONS_STORAGE_KEY } from '../lib/diagnosisLocalSession.js'
 import { buildDiagnosisResult, runScoringTests } from '../lib/scoring.js'
 import { ProfileForm } from './ProfileForm.jsx'
 import { ScoreBar } from './ScoreBar.jsx'
@@ -42,12 +43,24 @@ const statusLabelMap = {
   other: '기타',
 }
 
+const DIAGNOSIS_INTERPRETATION_NOTE =
+  '본 결과는 응답 내용을 바탕으로 한 진로·취업 준비 참고자료입니다. 특정 직업이나 기업에 대한 적합성을 단정하지 않으며, 실제 선택 시 개인의 경험, 목표, 환경을 함께 고려해야 합니다.'
+
+const POST_DIAGNOSIS_NEXT_STEPS =
+  '이제 베이직 리포트를 확인하고, 필요하다면 AI 리포트와 자기소개서 첨삭 기능도 함께 사용해보세요. 마지막으로 MVP 후기조사를 제출하면 PDF 저장과 데이터 저장이 완료됩니다.'
+
 function SummaryItem({ label, value }) {
+  const text =
+    value == null
+      ? ''
+      : typeof value === 'string'
+        ? value.trim()
+        : String(value).trim()
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
       <p className="text-xs font-medium text-slate-500">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-slate-900">
-        {value || '-'}
+        {text ? text : '미입력'}
       </p>
     </div>
   )
@@ -66,8 +79,6 @@ export function DiagnosisPage({
   setDiagnosisResult,
   switchTab,
 }) {
-  const SESSION_STORAGE_KEY = 'careerDiagnosisSessionQuestions'
-
   const [currentPage, setCurrentPage] = useState(0)
 
   const pages = useMemo(() => {
@@ -96,6 +107,13 @@ export function DiagnosisPage({
     return out
   }, [answers, sessionQuestions])
 
+  const answeredQuestionTotal = useMemo(
+    () =>
+      sessionQuestions.filter((q) => typeof answers[q.id] === 'number').length,
+    [sessionQuestions, answers],
+  )
+  const remainingQuestions = Math.max(0, TOTAL_QUESTION_COUNT - answeredQuestionTotal)
+
   const isDone =
     sessionQuestions.length > 0 &&
     Object.keys(answers).length === sessionQuestions.length
@@ -111,7 +129,7 @@ export function DiagnosisPage({
 
   const initSession = () => {
     try {
-      const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+      const raw = localStorage.getItem(SESSION_QUESTIONS_STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed) && parsed.length === TOTAL_QUESTION_COUNT) {
@@ -127,14 +145,14 @@ export function DiagnosisPage({
     }
 
     const generated = generateExamQuestions(questionBank, QUESTION_QUOTA)
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(generated))
+    localStorage.setItem(SESSION_QUESTIONS_STORAGE_KEY, JSON.stringify(generated))
     setSessionQuestions(generated)
   }
 
   const regenerateSession = () => {
-    localStorage.removeItem(SESSION_STORAGE_KEY)
+    localStorage.removeItem(SESSION_QUESTIONS_STORAGE_KEY)
     const generated = generateExamQuestions(questionBank, QUESTION_QUOTA)
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(generated))
+    localStorage.setItem(SESSION_QUESTIONS_STORAGE_KEY, JSON.stringify(generated))
     setSessionQuestions(generated)
     setAnswers({})
     setCurrentPage(0)
@@ -219,6 +237,7 @@ export function DiagnosisPage({
             profile={profile}
             setProfile={setProfile}
             onStart={handleStartDiagnosis}
+            switchTab={switchTab}
           />
         </Card>
       ) : (
@@ -252,13 +271,19 @@ export function DiagnosisPage({
               </div>
             }
           >
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <SummaryItem label="이름" value={profile.name} />
+              <SummaryItem label="이메일" value={profile.email} />
               <SummaryItem
                 label="현재 상태"
-                value={statusLabelMap[profile.status] || profile.status}
+                value={
+                  profile.status
+                    ? statusLabelMap[profile.status] || profile.status
+                    : ''
+                }
               />
               <SummaryItem label="학교" value={profile.school} />
+              <SummaryItem label="전공" value={profile.major} />
               <SummaryItem label="희망 직무" value={profile.targetJob} />
             </div>
           </Card>
@@ -320,12 +345,25 @@ export function DiagnosisPage({
               <div className="lg:col-span-8">
                 {isDone ? (
                   <div className="space-y-4">
+                    <div
+                      className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-600 ring-1 ring-slate-200"
+                      role="note"
+                    >
+                      {DIAGNOSIS_INTERPRETATION_NOTE}
+                    </div>
+                    <div
+                      className="rounded-2xl border border-indigo-100 bg-indigo-50/80 p-4 text-sm leading-6 text-indigo-950 ring-1 ring-indigo-100"
+                      role="status"
+                    >
+                      {POST_DIAGNOSIS_NEXT_STEPS}
+                    </div>
                     <section className="rounded-3xl border border-slate-200 bg-slate-50 p-6">
                       <p className="text-sm font-semibold text-slate-900">
                         나의 커리어 요약
                       </p>
                       <p className="mt-2 text-sm leading-6 text-slate-700">
-                        {computedResult?.summary}
+                        {computedResult?.summary?.trim() ||
+                          '아직 생성된 결과가 없습니다.'}
                       </p>
                     </section>
 
@@ -335,10 +373,12 @@ export function DiagnosisPage({
                           현재 진로·취업 준비 단계
                         </p>
                         <p className="mt-2 text-base font-semibold text-slate-800">
-                          {computedResult?.stage.label}
+                          {computedResult?.stage?.label?.trim() ||
+                            '아직 생성된 결과가 없습니다.'}
                         </p>
                         <p className="mt-1 text-sm text-slate-600">
-                          {computedResult?.stage.description}
+                          {computedResult?.stage?.description?.trim() ||
+                            '아직 생성된 결과가 없습니다.'}
                         </p>
                       </div>
                       <div className="rounded-3xl border border-slate-200 bg-white p-5">
@@ -346,14 +386,18 @@ export function DiagnosisPage({
                           추천 직무 TOP 5
                         </p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          {(computedResult?.recommendedJobs ?? []).map((job) => (
-                            <span
-                              key={job}
-                              className="rounded-2xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
-                            >
-                              {job}
-                            </span>
-                          ))}
+                          {(computedResult?.recommendedJobs ?? []).length ? (
+                            (computedResult?.recommendedJobs ?? []).map((job) => (
+                              <span
+                                key={job}
+                                className="rounded-2xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+                              >
+                                {typeof job === 'string' && job.trim() ? job : '미입력'}
+                              </span>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-600">추천 직무 정보가 없습니다.</p>
+                          )}
                         </div>
                       </div>
                     </section>
@@ -364,7 +408,7 @@ export function DiagnosisPage({
                           직업흥미 TOP 3
                         </p>
                         <div className="mt-3 space-y-3">
-                          {computedResult?.top.interest.map(([key, value]) => (
+                          {(computedResult?.top?.interest ?? []).map(([key, value]) => (
                             <ScoreBar
                               key={`interest-${key}`}
                               label={getDisplayLabel('interest', key)}
@@ -378,7 +422,7 @@ export function DiagnosisPage({
                           직업가치관 TOP 3
                         </p>
                         <div className="mt-3 space-y-3">
-                          {computedResult?.top.values.map(([key, value]) => (
+                          {(computedResult?.top?.values ?? []).map(([key, value]) => (
                             <ScoreBar
                               key={`values-${key}`}
                               label={getDisplayLabel('values', key)}
@@ -392,7 +436,7 @@ export function DiagnosisPage({
                           업무스타일 TOP 3
                         </p>
                         <div className="mt-3 space-y-3">
-                          {computedResult?.top.workStyle.map(([key, value]) => (
+                          {(computedResult?.top?.workStyle ?? []).map(([key, value]) => (
                             <ScoreBar
                               key={`workStyle-${key}`}
                               label={getDisplayLabel('workStyle', key)}
@@ -406,7 +450,7 @@ export function DiagnosisPage({
                           직업기초역량 TOP 3
                         </p>
                         <div className="mt-3 space-y-3">
-                          {computedResult?.top.competency.map(([key, value]) => (
+                          {(computedResult?.top?.competency ?? []).map(([key, value]) => (
                             <ScoreBar
                               key={`competency-${key}`}
                               label={getDisplayLabel('competency', key)}
@@ -422,7 +466,7 @@ export function DiagnosisPage({
                         추가 지원 필요 영역 TOP 2
                       </p>
                       <div className="mt-3 space-y-3">
-                        {computedResult?.top.barriers.map(([key, value]) => (
+                        {(computedResult?.top?.barriers ?? []).map(([key, value]) => (
                           <ScoreBar
                             key={`barrier-${key}`}
                             label={getDisplayLabel('barriers', key)}
@@ -454,6 +498,13 @@ export function DiagnosisPage({
                   </div>
                 ) : (
                   <>
+                    <p
+                      className="mb-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 shadow-sm ring-1 ring-slate-100"
+                      aria-live="polite"
+                    >
+                      전체 {TOTAL_QUESTION_COUNT}문항 중 {answeredQuestionTotal}문항 응답
+                      완료 · {remainingQuestions}문항 남음
+                    </p>
                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-6">
                       <p className="text-sm font-semibold text-slate-900">
                         {current?.displaySection ?? '문항 로딩 중...'}
@@ -554,10 +605,6 @@ export function DiagnosisPage({
                       </button>
                     </div>
 
-                    <p className="mt-4 text-xs text-slate-500">
-                      총 {TOTAL_QUESTION_COUNT}문항 (3단계에서는 랜덤 출제/응답 UI만
-                      구현합니다)
-                    </p>
                   </>
                 )}
               </div>

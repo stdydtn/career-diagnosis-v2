@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Header } from './components/Header.jsx'
+import { Footer } from './components/Footer.jsx'
 import { DiagnosisPage } from './components/DiagnosisPage.jsx'
 import { CoverLetterPage } from './components/CoverLetterPage.jsx'
 import { BasicReportPage } from './components/BasicReportPage.jsx'
 import { FeedbackSurveyPage } from './components/FeedbackSurveyPage.jsx'
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage.jsx'
+import { TermsPage } from './components/TermsPage.jsx'
 
 const emptyProfile = {
   name: '',
@@ -41,6 +44,8 @@ const TABS = /** @type {const} */ ({
   coverLetter: 'coverLetter',
   basicReport: 'basicReport',
   feedback: 'feedback',
+  privacy: 'privacy',
+  terms: 'terms',
 })
 
 const COVER_LETTER_REVIEW_STORAGE_KEY = 'careerDiagnosisCoverLetterReview'
@@ -102,10 +107,12 @@ function App() {
   )
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50">
       <Header tabs={tabs} activeTab={activeTab} onChangeTab={switchTab} />
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-16 pt-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 pb-16 pt-8 sm:px-6 lg:px-8">
+        {activeTab === TABS.privacy ? <PrivacyPolicyPage switchTab={switchTab} /> : null}
+        {activeTab === TABS.terms ? <TermsPage switchTab={switchTab} /> : null}
         {activeTab === TABS.diagnosis && (
           <DiagnosisPage
             profile={profile}
@@ -135,10 +142,10 @@ function App() {
           <BasicReportPage
             profile={profile}
             diagnosisResult={diagnosisResult}
-            aiReport={aiReport}
-            setAiReport={setAiReport}
             switchTab={switchTab}
             feedbackSubmitted={feedbackSubmitted}
+            aiReport={aiReport}
+            setAiReport={setAiReport}
           />
         )}
         {activeTab === TABS.feedback && (
@@ -154,9 +161,12 @@ function App() {
             setFeedback={setFeedback}
             onSubmitted={() => setFeedbackSubmitted(true)}
             switchTab={switchTab}
+            feedbackSubmitted={feedbackSubmitted}
           />
         )}
       </main>
+
+      <Footer switchTab={switchTab} />
     </div>
   )
 }

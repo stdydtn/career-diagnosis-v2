@@ -57,7 +57,7 @@ function normalizeActionPlan(basicReport) {
 }
 
 function formatStatus(status) {
-  if (status == null || status === '') return '-'
+  if (status == null || status === '') return '미입력'
   return STATUS_LABELS[status] ?? String(status)
 }
 
@@ -130,15 +130,15 @@ export async function downloadBasicReportPdf({
   })
 
   addText('[참여자 정보]', { fontSize: 13, gap: 3 })
-  addText(`이름: ${p.name?.trim() || '-'}`)
-  addText(`이메일: ${p.email?.trim() || '-'}`)
+  addText(`이름: ${p.name?.trim() || '미입력'}`)
+  addText(`이메일: ${p.email?.trim() || '미입력'}`)
   addText(`현재 상태: ${formatStatus(p.status)}`)
-  addText(`학교: ${p.school?.trim() || '-'}`)
-  addText(`전공: ${p.major?.trim() || '-'}`)
-  addText(`희망 직무: ${p.targetJob?.trim() || '-'}`)
+  addText(`학교: ${p.school?.trim() || '미입력'}`)
+  addText(`전공: ${p.major?.trim() || '미입력'}`)
+  addText(`희망 직무: ${p.targetJob?.trim() || '미입력'}`)
 
   addText('[커리어 요약]', { fontSize: 13, gap: 3 })
-  addText(basicReport.summary || '')
+  addText(basicReport.summary?.trim() || '아직 생성된 결과가 없습니다.')
 
   const sections = basicReport.sections || {}
   for (const key of SECTION_KEYS) {

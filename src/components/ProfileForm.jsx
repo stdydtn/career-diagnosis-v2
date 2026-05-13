@@ -16,7 +16,15 @@ const statusOptions = [
   { value: 'other', label: '기타' },
 ]
 
-export function ProfileForm({ profile, setProfile, onStart }) {
+/**
+ * @param {{
+ *   profile: object,
+ *   setProfile: (fn: object | ((prev: object) => object)) => void,
+ *   onStart: () => void,
+ *   switchTab?: (id: string) => void,
+ * }} props
+ */
+export function ProfileForm({ profile, setProfile, onStart, switchTab }) {
   const requiredOk =
     profile.name.trim() &&
     profile.email.trim() &&
@@ -54,11 +62,31 @@ export function ProfileForm({ profile, setProfile, onStart }) {
 
   return (
     <div className="space-y-6">
+      <div
+        className="rounded-2xl bg-indigo-50 p-4 text-sm leading-6 text-indigo-950 ring-1 ring-indigo-100"
+        role="note"
+      >
+        현재 서비스는 정식 출시 전 MVP 테스트 버전입니다. 진단 문항, 리포트 문장,
+        AI 첨삭 결과는 사용자 피드백을 바탕으로 개선될 예정입니다. 테스트 완료 후
+        마지막 후기조사까지 작성해주시면 서비스 개선에 큰 도움이 됩니다.
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 ring-1 ring-slate-100">
+        <p className="text-sm font-semibold text-slate-900">테스트 진행 순서</p>
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-700">
+          <li>기본정보 입력</li>
+          <li>50문항 커리어 진단</li>
+          <li>베이직 리포트 확인</li>
+          <li>AI 리포트 생성</li>
+          <li>자기소개서 첨삭</li>
+          <li>MVP 후기조사 제출</li>
+        </ol>
+      </div>
+
       <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
         <p className="text-sm font-medium text-slate-800">진단 전 기본정보</p>
         <p className="mt-1 text-sm leading-6 text-slate-600">
-          필수 항목 입력 및 동의 후 진단 화면으로 이동합니다. (2단계에서는
-          저장/연동 없이 화면 흐름만 구현)
+          필수 항목 입력 및 동의 후 진단 화면으로 이동합니다.
         </p>
       </div>
 
@@ -169,15 +197,42 @@ export function ProfileForm({ profile, setProfile, onStart }) {
         </div>
       </div>
 
+      <div
+        className="rounded-2xl bg-amber-50 p-4 text-sm leading-6 text-amber-950 ring-1 ring-amber-100"
+        role="note"
+      >
+        <p>
+          입력하신 정보는 커리어 진단 결과 제공, 자기소개서 첨삭, 서비스 개선 및
+          MVP 테스트 분석을 위해 활용될 수 있습니다. 본 서비스는 정식 심리검사
+          또는 의학적·임상적 진단을 대체하지 않으며, 진로·취업 준비를 돕기 위한
+          참고용 서비스입니다.
+        </p>
+        <p className="mt-3">
+          연락처, 학교, 학점, 자격증, 어학성적 등은 선택 입력 항목이며, 입력하지
+          않아도 진단을 진행할 수 있습니다.
+        </p>
+      </div>
+
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-slate-900">동의</h3>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <CheckboxField
-            label="개인정보 수집 및 진단 결과 활용에 동의합니다."
-            checked={profile.privacyConsent}
-            onChange={update('privacyConsent')}
-            helper="필수 동의 항목입니다."
-          />
+          <div className="space-y-2">
+            <CheckboxField
+              label="개인정보 수집·이용 및 진단 결과 분석 활용에 동의합니다."
+              checked={profile.privacyConsent}
+              onChange={update('privacyConsent')}
+              helper="필수 동의 항목입니다."
+            />
+            {typeof switchTab === 'function' ? (
+              <button
+                type="button"
+                onClick={() => switchTab('privacy')}
+                className="text-xs font-medium text-slate-600 underline decoration-slate-300 underline-offset-2 hover:text-slate-900"
+              >
+                개인정보 처리방침 보기
+              </button>
+            ) : null}
+          </div>
           <CheckboxField
             label="마케팅 정보 수신에 동의합니다."
             checked={profile.marketingConsent}
