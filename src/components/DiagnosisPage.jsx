@@ -15,6 +15,7 @@ import {
   runQuestionSelectorTests,
 } from '../lib/questionSelector.js'
 import { SESSION_QUESTIONS_STORAGE_KEY } from '../lib/diagnosisLocalSession.js'
+import { saveDiagnosisSubmission } from '../lib/saveDiagnosis.js'
 import { buildDiagnosisResult, runScoringTests } from '../lib/scoring.js'
 import { ProfileForm } from './ProfileForm.jsx'
 import { ScoreBar } from './ScoreBar.jsx'
@@ -127,6 +128,23 @@ export function DiagnosisPage({
     currentQuestions.length > 0 &&
     currentQuestions.every((q) => typeof answers[q.id] === 'number')
 
+  /** 검사 화면에서 보이는 순서대로 1~50 (영역별 페이지 순서와 동일) */
+  const questionNumberById = useMemo(() => {
+    const m = new Map()
+    let n = 1
+    for (const page of pages) {
+      for (const q of page.questions) {
+        m.set(q.id, n)
+        n += 1
+      }
+    }
+    return m
+  }, [pages])
+
+  /**
+   * 출제 문항을 준비하고, 동일 배열을 반환합니다(Supabase 저장 등 동기 사용용).
+   * @returns {unknown[]}
+   */
   const initSession = () => {
     try {
       const raw = localStorage.getItem(SESSION_QUESTIONS_STORAGE_KEY)
@@ -136,7 +154,7 @@ export function DiagnosisPage({
           const ids = parsed.map((q) => q?.id)
           if (new Set(ids).size === ids.length) {
             setSessionQuestions(parsed)
-            return
+            return parsed
           }
         }
       }
@@ -147,6 +165,7 @@ export function DiagnosisPage({
     const generated = generateExamQuestions(questionBank, QUESTION_QUOTA)
     localStorage.setItem(SESSION_QUESTIONS_STORAGE_KEY, JSON.stringify(generated))
     setSessionQuestions(generated)
+    return generated
   }
 
   const regenerateSession = () => {
@@ -164,12 +183,25 @@ export function DiagnosisPage({
   }
  
   const handleStartDiagnosis = () => {
-    initSession()
+    const sessionQs = initSession()
     if (import.meta.env.DEV) {
       runQuestionSelectorTests({ questionBank, quota: QUESTION_QUOTA })
       runScoringTests()
     }
     setProfileReady(true)
+
+    void saveDiagnosisSubmission({
+      profile,
+      sessionQuestions: sessionQs,
+      answers: {},
+      diagnosisResult: null,
+      feedback: {},
+      coverLetterReview: null,
+      aiReport: null,
+      aiCoverLetterReview: null,
+    }).catch((err) => {
+      console.warn('[DiagnosisPage] 진단 시작 시 Supabase 저장 실패(무시하고 진행)', err)
+    })
   }
 
   const labelMaps = {
@@ -520,29 +552,30 @@ export function DiagnosisPage({
                     </div>
 
                     <div className="mt-4 space-y-4">
-                      {currentQuestions.map((q, idx) => {
+                      {currentQuestions.map((q) => {
                         const selected = answers[q.id]
+                        const globalNum = questionNumberById.get(q.id) ?? 0
                         return (
                           <section
                             key={q.id}
                             className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
                           >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <p className="text-sm font-semibold text-slate-900">
-                                Q{idx + 1}. {q.text}
-                              </p>
-                              <span className="rounded-2xl bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                                {q.key}
-                              </span>
-                            </div>
+                            <p className="text-sm font-semibold leading-relaxed text-slate-900">
+                              <span className="tabular-nums">{globalNum}</span>. {q.text}
+                            </p>
 
-                            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-5">
+                            <div
+                              className="mt-4 grid w-full grid-cols-1 gap-2 sm:grid-cols-5 sm:gap-2"
+                              role="group"
+                              aria-label="척도 선택"
+                            >
                               {scale.map((s) => {
                                 const active = selected === s.value
                                 return (
                                   <button
                                     key={s.value}
                                     type="button"
+                                    title={s.label}
                                     onClick={() =>
                                       setAnswers((prev) => ({
                                         ...prev,
@@ -550,16 +583,27 @@ export function DiagnosisPage({
                                       }))
                                     }
                                     className={[
-                                      'rounded-2xl px-3 py-2 text-left text-sm font-medium transition',
+                                      'flex min-h-[3rem] w-full flex-row items-center gap-2 rounded-2xl px-3 py-2.5 text-left text-sm font-medium transition',
+                                      'sm:min-h-[4.5rem] sm:flex-col sm:items-center sm:justify-center sm:gap-1.5 sm:px-1.5 sm:py-2.5 sm:text-center',
                                       active
                                         ? 'bg-slate-900 text-white'
                                         : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
                                     ].join(' ')}
                                   >
-                                    <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-xl bg-slate-100 text-xs font-semibold text-slate-800">
+                                    <span
+                                      className={[
+                                        'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-xs font-semibold',
+                                        'sm:h-7 sm:w-7',
+                                        active
+                                          ? 'bg-white/20 text-white'
+                                          : 'bg-slate-100 text-slate-800',
+                                      ].join(' ')}
+                                    >
                                       {s.value}
                                     </span>
-                                    <span>{s.label}</span>
+                                    <span className="min-w-0 flex-1 leading-snug sm:flex-none sm:text-[11px] sm:leading-snug md:text-xs">
+                                      {s.label}
+                                    </span>
                                   </button>
                                 )
                               })}
